@@ -1,0 +1,838 @@
+---
+title: "AFWA K Means"
+author: "Rich von Furstenberg"
+date: "5/17/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Import Data
+AFWA<-read.csv("C:\\Users\\rjvonfur\\Documents\\R\\R for 554\\Apr2021 RJV AFWA_22states.csv")
+### This is the current data file as of 4-22-21
+
+AFWA
+#Renaming Social Identity variable from "TSC9752" (generate by SPSS 2-step Cluster Analysis) to more intuitive "Social_Identity". 
+names(AFWA)[names(AFWA) == "TSC_9752"] <- "Social_Identity"
+#Social_Identity needs to be changed from integer to factor
+AFWA$Social_Identity<-as.factor(AFWA$Social_Identity)
+#Drop Column "Identity Fisherman" "Rec_OtherTEXT because it's all NA's and really screws up analysis when doing NA omit, all data is thrown out.
+AFWA= subset(AFWA, select = -c(Identity_Fisher)) 
+AFWA= subset(AFWA, select = -c(Rec_OtherTEXT)) 
+AFWA$OutdoorRecScore<-as.numeric(AFWA$OutdoorRecScore)
+head(AFWA)
+```
+#Clustering - Kmeans 6 cluster
+```{r}
+subset_kmeans <- AFWA[, c("Social_Identity", "WVO_Domination", "WVO_Mutualism", "Gender_3Cat", "Race_6Cat", "Race_2Cat", "Gender_2Cat", "HuntingApproval", "ConservationCaringScale", "HuntingActivitiesScale", "HuntApproval_Altruism", "HuntApproval_Egoism", "OutdoorRecScore", "ChildhoodLocation_2Cat", "CollegeMajor_2Cat", "Identity_WildlifeAdv", "Identity_AnimalRights", "Identity_Environment", "Identity_Conservation", "Identity_GunRights", "Identity_Hunter" )]
+subset_kmeansNAomit<-na.omit(subset_kmeans)
+
+#create Identity Question subset # 4 identities NO hunter NO gun rights 5-16-21
+library(ggplot2)
+library(dplyr)
+identity_questions = subset(subset_kmeansNAomit, select = c(Identity_AnimalRights, Identity_Conservation, Identity_Environment, Identity_WildlifeAdv))
+id_naomit<-na.omit(identity_questions)
+
+install.packages("animation")	
+set.seed(2345)
+library(animation)
+kmeans.ani(id_naomit, 3)
+
+#Elbow Method to find Optimal k # https://www.guru99.com/r-k-means-clustering.html
+
+#You create the function that runs the k-mean algorithm and store the total within clusters sum of squares 
+kmean_withinss <- function(k) {
+    cluster <- kmeans(id_naomit, k)
+    return (cluster$tot.withinss)
+}
+# Set maximum cluster 
+max_k <-20 
+# Run algorithm over a range of k 
+wss <- sapply(2:max_k, kmean_withinss)
+# Create a data frame to plot the graph
+elbow <-data.frame(2:max_k, wss)
+
+# Plot the graph with ggplot
+ggplot(elbow, aes(x = X2.max_k, y = wss)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(breaks = seq(1, 20, by = 1))
+
+#optimal cluster # looks to be 6 from diminishing returns on plot
+
+opt_clust<-kmeans(id_naomit, 6)
+opt_clust$cluster
+opt_clust$centers
+opt_clust$size	
+################################# going back to add 3 cluster version 5-17-21
+
+#You create the function that runs the k-mean algorithm and store the total within clusters sum of squares 
+kmean_withinss <- function(k) {
+   cluster3 <- kmeans(id_naomit, k)
+    return (cluster3$tot.withinss)
+}
+opt_clust3<-kmeans(id_naomit, 3)
+opt_clust3$cluster3
+opt_clust3$centers
+opt_clust3$size	
+
+
+
+
+#Let's create the reeshaped Dataset so we can make a HEATMAP
+
+library(tidyr)
+center3 <-opt_clust3$centers
+center3
+
+# create dataset with the cluster number
+
+cluster3 <- c(1: 3)
+center_df3 <- data.frame(cluster3, center3)
+#####################################################################
+#Clustering over again w number set to 3 https://towardsdatascience.com/clustering-analysis-in-r-using-k-means-73eca4fb7967
+set.seed(123)
+clustering3 <- kmeans(id_naomit, centers = 3, nstart = 20)
+clustering3
+#####################################################################
+
+#Clustering over again w number set to 6 https://towardsdatascience.com/clustering-analysis-in-r-using-k-means-73eca4fb7967
+set.seed(123)
+clustering <- kmeans(id_naomit, centers = 6, nstart = 20)
+clustering
+
+#Clustering Validation- silohouette coeffient to evalute the goodness of clustering
+library(cluster)
+library(factoextra)
+
+sil <- silhouette(clustering3$cluster, dist(id_naomit))
+fviz_silhouette(sil)
+
+#Si > 0 means that the observation is well clustered. The closest it is to 1, the best it is clustered.
+#Si > 0 means that the observation is well clustered. The closest it is to 1, the best it is clustered
+#Si > 0 means that the observation is well clustered. The closest it is to 1, the best it is clustered.
+
+#Clustering interpretation
+library(GGally)
+library(plotly)
+```
+
+```{r}
+
+subset_kmeansNAomit$cluster <- as.factor(clustering$cluster)
+
+#p <- ggparcoord(data = subset_kmeansNAomit, columns = c(2:15), groupColumn = "cluster", scale = "std") + labs(x = "Question", y = "value (in standard-deviation units)", title = "Clustering")
+#ggplotly(p)
+
+#Cluster Mapping
+#https://www.datanovia.com/en/blog/k-means-clustering-visualization-in-r-step-by-step-guide/
+library(viridis)
+fviz_cluster(clustering3, data = id_naomit,
+             palette = "viridis", 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+
+```
+#Comparing old clusters to new clusters
+```{r}
+table(subset_kmeansNAomit$Social_Identity, subset_kmeansNAomit$cluster)
+
+mosaicplot(table(subset_kmeansNAomit$Social_Identity, subset_kmeansNAomit$cluster))
+
+library(ggmosaic)
+stackbar <- ggplot(data = subset_kmeansNAomit) + 
+  geom_mosaic(aes(x=product(cluster, Social_Identity), fill = cluster),
+              divider=c("vspine", "hbar")) +   
+  labs(x="2-step Social ID (3_cat)", y = "K-means Social ID (6_cat)", title = "Comparison of 2-step(SPSS) vs K-means(R)")
+stackbar
+##############################################################################
+subset_kmeansNAomit$cluster3 <- as.factor(clustering3$cluster)
+table(subset_kmeansNAomit$Social_Identity, subset_kmeansNAomit$cluster3)
+
+mosaicplot(table(subset_kmeansNAomit$Social_Identity, subset_kmeansNAomit$cluster3))
+library(ggmosaic)
+stackbar <- ggplot(data = subset_kmeansNAomit) + 
+  geom_mosaic(aes(x=product(cluster3, Social_Identity), fill = cluster3),
+              divider=c("vspine", "hbar")) +   
+  labs(x="2-step Social ID (3_cat)", y = "K-means Social ID (3_cat)", title = "Comparison of 2-step(SPSS) vs K-means(R)")
+stackbar
+##############################################################################
+#Come on
+#Is it worth it? Let me work it
+#I put my thang down, flip it and reverse it
+library(ggmosaic)
+stackbar2 <- ggplot(data = subset_kmeansNAomit) + 
+  geom_mosaic(aes(x=product(Social_Identity, cluster), fill = Social_Identity),
+              divider=c("vspine", "hbar")) +   
+  labs(x="K-means Social ID (6_cat)", y ="2-Step Social ID (3_cat)", title = "Comparison of 2-step(SPSS) vs K-means(R)")
+stackbar2
+
+#New identities by ID Question
+
+library(ggplot2)
+# Basic violin plot ID Animal Rights
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_AnimalRights, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 4) 
+a
+
+# Basic violin plot ID Conservation
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_Conservation, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 4) 
+a
+
+# Basic violin plot ID Environment
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_Environment, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 4) 
+a
+
+# Basic violin plot ID Wildlife Advocate
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_WildlifeAdv, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 4) 
+a
+
+# Basic violin plot ID Gun Rights
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_GunRights, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 2) 
+a
+
+# Basic violin plot ID Hunter
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=Identity_Hunter, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 2) 
+a
+
+
+```
+
+#Exploring New K Means Clusters
+```{r}
+
+## Continuous explanatory Variable Exploration
+library(ggplot2)
+
+
+p <- ggplot(subset_kmeansNAomit, aes(ConservationCaringScale, Identity_GunRights))
+p + geom_jitter(aes(colour = cluster), width = 1, height = 1)
+
+
+### Faceted heatmap cluster by CC/ID GunRights
+
+graph.labels <- labs(x = "Conservation Caring", y = "Identity Gun Rights",
+                     title = "Relationship between Cluster, Cons Caring, Gun Rights",
+                     caption = "data from AFWA surveys 2021")
+
+my.theme <- theme_classic()  + theme(aspect.ratio = 1)
+
+p + 
+  geom_density_2d(aes(color = cluster), alpha = 0.5) + 
+  geom_point(aes(color = cluster), alpha=0.5, size=1) + 
+  facet_wrap(~ cluster) +
+  graph.labels + labs(subtitle = "All species") +
+  theme_bw() + 
+  theme(aspect.ratio = 1, legend.position = "none")  # get rid of legend
+##
+
+p + 
+  stat_density_2d(aes(fill = ..level..), geom = "polygon") + 
+  
+  # lavenderblush is the HTML standard name for a light purplish-pink color
+  scale_fill_continuous(low="lavenderblush", high="red") +
+  facet_wrap(~ cluster)+
+  
+  graph.labels + labs(subtitle = "I. setosa data only") +
+  my.theme
+
+p + 
+  geom_hex(binwidth = 0.2) + 
+  scale_fill_continuous(low="lavenderblush", high="red") +
+    facet_wrap(~ cluster)+
+  graph.labels + labs(subtitle = "I. setosa data only") +
+  my.theme
+
+p + 
+  stat_density_2d(aes(fill = ..level..), geom = "polygon") + 
+  graph.labels + labs(subtitle = "data exploration") +
+  facet_wrap(~ cluster)+
+  my.theme
+
+p + 
+  geom_density_2d(aes(color = cluster)) +
+  graph.labels + labs(subtitle = "data exploration") +
+  my.theme
+```
+
+# Ridge Plots of 6 Cluster K Means vs 4 Identity Questions used to make them (+ ID GunRights and ID Hunter)
+```{r}
+library(ggridges)
+ggplot(subset_kmeansNAomit, aes(x = cluster, y = Identity_GunRights, group = Identity_GunRights, fill = cluster)) + geom_density_ridges2()
+
+### 6 Clusters v Gun Rights 
+ggplot(subset_kmeansNAomit, aes(x = Identity_GunRights, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity GunRights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters v Gun Rights 
+ggplot(subset_kmeansNAomit, aes(x = Identity_GunRights, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity GunRights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters v ID Hunter
+ggplot(subset_kmeansNAomit, aes(x = Identity_Hunter, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Hunter',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters v ID Hunter
+ggplot(subset_kmeansNAomit, aes(x = Identity_Hunter, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Hunter',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters vs Animal Rights
+ggplot(subset_kmeansNAomit, aes(x = Identity_AnimalRights, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Animal Rights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters vs Animal Rights
+ggplot(subset_kmeansNAomit, aes(x = Identity_AnimalRights, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Animal Rights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters vs Identity Environment
+ggplot(subset_kmeansNAomit, aes(x = Identity_Environment, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Environment',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters vs Identity Environment
+ggplot(subset_kmeansNAomit, aes(x = Identity_Environment, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Environment',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Cluster vs Identity Conservation
+ggplot(subset_kmeansNAomit, aes(x = Identity_Conservation, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Conservation',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Cluster vs Identity Conservation
+ggplot(subset_kmeansNAomit, aes(x = Identity_Conservation, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Conservation',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+
+### 6 Cluster vs Identity Wildlife Advocate
+ggplot(subset_kmeansNAomit, aes(x = Identity_WildlifeAdv, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Wildlife Advocate',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Cluster vs Identity Wildlife Advocate
+ggplot(subset_kmeansNAomit, aes(x = Identity_WildlifeAdv, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Wildlife Advocate',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+```
+# Proportion Plots of 6 Cluster K Means vs Outcome Vars of Interest
+```{r}
+
+# WVOs by Cluster Proportion Plot
+#https://psyteachr.github.io/msc-data-skills/ggplot.html
+
+ggplot(subset_kmeansNAomit, aes(WVO_Domination, WVO_Mutualism, colour = cluster3)) +
+   geom_count(position="jitter")
+
+# ConservationCaring x ID GunRights x Cluster
+
+ggplot(subset_kmeansNAomit, aes(ConservationCaringScale, Identity_GunRights, colour = cluster3)) +
+   geom_count(position="jitter")
+
+# ID Hunter x GunRights x Cluster
+
+ggplot(subset_kmeansNAomit, aes(Identity_Hunter, Identity_GunRights, colour = cluster3)) +
+   geom_count(position="jitter")
+
+# ID Environment x GunRights x Cluster
+
+ggplot(subset_kmeansNAomit, aes(Identity_Environment, Identity_GunRights, colour = cluster3)) +
+   geom_count(position="jitter")
+
+# HuntApprovEgo x HuntApprovAlt x Cluster
+ggplot(subset_kmeansNAomit, aes(HuntApproval_Altruism, HuntApproval_Egoism, colour = cluster3)) +
+   geom_count(position="jitter")
+###################### A look at Gender vs GunRights as possible wedge issue
+# ID GunRights x ConservationCaring x Gender
+ggplot(subset_kmeansNAomit, aes(ConservationCaringScale, Identity_GunRights, colour = Gender_2Cat)) +
+   geom_count(position="jitter")
+
+# ID GunRights x WVO Mutualism x Gender
+ggplot(subset_kmeansNAomit, aes(WVO_Mutualism, Identity_GunRights, colour = Gender_2Cat)) +
+   geom_count(position="jitter")
+
+# ID GunRights x WVO Domination x Gender
+ggplot(subset_kmeansNAomit, aes(WVO_Domination, Identity_GunRights, colour = Gender_2Cat)) +
+   geom_count(position="jitter")
+
+# WVO Mutualism x WVO Domination x Gender
+ggplot(subset_kmeansNAomit, aes(WVO_Domination, WVO_Mutualism, colour = Gender_2Cat)) +
+   geom_count(position="jitter")
+
+
+####################### A look at Race
+# ID GunRights x WVO Domination x Race
+ggplot(subset_kmeansNAomit, aes(WVO_Domination, Identity_GunRights, colour = Race_6Cat)) +
+   geom_count(position="jitter")
+
+# WVO Mutualism x WVO Domination x Race
+ggplot(subset_kmeansNAomit, aes(WVO_Domination, WVO_Mutualism, colour = Race_6Cat)) +
+   geom_count(position="jitter")
+
+
+```
+```{r}  
+
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(ggridges)
+
+
+
+```
+#Demographics of 6 clusters
+```{r}
+### k being used to make subset easier to type
+k<-subset_kmeansNAomit
+mytable <- table(k$Race_6Cat, k$cluster) # A will be rows, B will be columns
+mytable # print table
+
+margin.table(mytable, 1) # A frequencies (summed over B)
+margin.table(mytable, 2) # B frequencies (summed over A)
+
+prop.table(mytable) # cell percentages
+prop.table(mytable, 1) # row percentages
+prop.table(mytable, 2) # column percentages 
+
+##################################################### Bar charts
+
+
+#Race as composed by cluster
+
+library(scales)
+ggplot(subset_kmeansNAomit, 
+       aes(x = factor(Race_6Cat,
+                      levels = c("Am. Indian", "Asian", 
+                                "Black", "Hispanic", 
+                                "White", "All Others")),
+           fill = factor(cluster3)))+
+                         #, 
+                        # levels = c("f", "r", "4"),
+                        # labels = c("front-wheel", 
+                                   # "rear-wheel", 
+                                   # "4-wheel")))) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Percent", 
+       fill = "K means cluster",
+       x = "Race (U.S.Census names)",
+       title = "Race x Cluster Composition") +
+  theme_minimal()
+
+#Cluster as composed by Race
+
+library(scales)
+ggplot(subset_kmeansNAomit, 
+       aes(x = factor(cluster3),
+                      #levels = c("Am. Indian", "Asian", 
+                                #"Black", "Hispanic", 
+                              #  "White", "All Others")),
+           fill = factor(Race_6Cat,
+  levels = c("Am. Indian", "Asian", 
+                                "Black", "Hispanic", 
+                                "White", "All Others"))))+
+                         #, 
+                        # levels = c("f", "r", "4"),
+                        # labels = c("front-wheel", 
+                                   # "rear-wheel", 
+                                 # "4-wheel")))) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Percent", 
+       fill = "Race (U.S. Census term)",
+       x = "Cluster",
+       title = "Cluster x Race Composition") +
+  theme_minimal()
+
+#### Clusters by Gender 2 Cat
+
+library(scales)
+ggplot(subset_kmeansNAomit, 
+       aes(x = factor(cluster3),
+                      #levels = c("Am. Indian", "Asian", 
+                               # "Black", "Hispanic", 
+                               # "White", "All Others")),
+           fill = factor(Gender_2Cat)))+
+                         #, 
+                        # levels = c("f", "r", "4"),
+                        # labels = c("front-wheel", 
+                                   # "rear-wheel", 
+                                   # "4-wheel")))) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Percent", 
+       fill = "K means cluster",
+       x = "Race (U.S.Census names)",
+       title = "Cluster x Gender Composition") +
+  theme_minimal()
+
+#### Gunrights by Conservation caring by Gender
+library(scales)
+ggplot(subset_kmeansNAomit, 
+       aes(x = factor(cluster3),
+                      #levels = c("Am. Indian", "Asian", 
+                               # "Black", "Hispanic", 
+                               # "White", "All Others")),
+           fill = factor(Gender_2Cat)))+
+                         #, 
+                        # levels = c("f", "r", "4"),
+                        # labels = c("front-wheel", 
+                                   # "rear-wheel", 
+                                   # "4-wheel")))) + 
+  geom_bar(position = "fill") +
+  scale_y_continuous(breaks = seq(0, 1, .2), 
+                     label = percent) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(y = "Percent", 
+       fill = "K means cluster",
+       x = "Race (U.S.Census names)",
+       title = "Cluster x Gender Composition") +
+  theme_minimal()
+```
+
+```{r}
+
+# Use vars() to supply variables from the dataset:
+p + facet_grid(rows = vars(drv))
+
+library(ggplot2)
+# Basic violin plot WVO Domination
+a <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=WVO_Domination, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8) 
+a
+
+# Violin of vs WVO Mutualism
+b <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=WVO_Mutualism, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8) 
+b
+
+# Violin of vs Conservation Caring Scale
+c <- ggplot(subset_kmeansNAomit, aes(x=cluster, y=ConservationCaringScale, fill=cluster)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8) 
+c
+
+# Violin vs Hunt Approval 
+d <- ggplot(subset1omit, aes(x=Social_Identity, y=HuntingApproval)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8)
+d
+
+# Violin vs Hunt Approval Altruism
+e <- ggplot(subset1omit, aes(x=Social_Identity, y=HuntApproval_Altruism)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8)
+e
+
+# Violin vs Hunt Approval Egoism
+f <- ggplot(subset1omit, aes(x=Social_Identity, y=HuntApproval_Egoism)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8)
+f
+
+# Violin vs Hunting Activities Scale
+g <- ggplot(subset1omit, aes(x=Social_Identity, y=HuntingActivitiesScale)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8)
+g
+
+# Violin vs Outdoor Rec Score
+h <- ggplot(subset1omit, aes(x=Social_Identity, y=OutdoorRecScore)) + 
+  geom_violin() +
+  geom_violin(adjust = 1.8)
+h
+```
+## Cluster Ridge plots for WVOs, ConsCaring, Hunt Approval
+```{r}
+library(ggridges)
+library(ggplot2)
+### 6 Clusters v WVO Domination 
+ggplot(subset_kmeansNAomit, aes(x = WVO_Domination, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by WVO Domination',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters v Gun Rights 
+ggplot(subset_kmeansNAomit, aes(x = Identity_GunRights, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity GunRights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters v WVO_Mutalism
+ggplot(subset_kmeansNAomit, aes(x = WVO_Mutualism, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by WVO Mutualism',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters v ID Hunter
+ggplot(subset_kmeansNAomit, aes(x = Identity_Hunter, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Hunter',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters vs Hunt Approval
+ggplot(subset_kmeansNAomit, aes(x = HuntingApproval, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Hunting Approval',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters vs Animal Rights
+ggplot(subset_kmeansNAomit, aes(x = Identity_AnimalRights, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Animal Rights',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Clusters vs Identity Environment
+ggplot(subset_kmeansNAomit, aes(x = Identity_Environment, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Environment',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Clusters vs Identity Environment
+ggplot(subset_kmeansNAomit, aes(x = Identity_Environment, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Environment',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 6 Cluster vs Identity Conservation
+ggplot(subset_kmeansNAomit, aes(x = Identity_Conservation, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Conservation',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Cluster vs Identity Conservation
+ggplot(subset_kmeansNAomit, aes(x = Identity_Conservation, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Conservation',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+
+### 6 Cluster vs Identity Wildlife Advocate
+ggplot(subset_kmeansNAomit, aes(x = Identity_WildlifeAdv, y = cluster, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Wildlife Advocate',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+
+### 3 Cluster vs Identity Wildlife Advocate
+ggplot(subset_kmeansNAomit, aes(x = Identity_WildlifeAdv, y = cluster3, fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_discrete(expand = expand_scale(mult = c(0.01, 0.25))) +
+  scale_fill_viridis_c(name = "Mean Approval", option = "C") +
+  labs(
+    title = 'K Means Cluster ID by Identity Wildlife Advocate',
+    subtitle = 'AFWA Data Exploration'
+  ) +
+  theme_ridges(font_size = 13, grid = TRUE) + 
+  theme(axis.title.y = element_blank())
+```
